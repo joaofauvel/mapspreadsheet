@@ -4,6 +4,9 @@ from typing import Union
 from typing import Type
 from typing import Callable
 from typing import Any
+from googlemaps import Client
+from googlemaps.exceptions import ApiError
+import time
 import googlemaps
 
 
@@ -25,18 +28,27 @@ class SearchBadResponse(Exception):
     """Raise for a bad response when performing an operation on the Places API"""
 
 
-class MassSearch:
+class Search:
     def __init__(self, query: str, key: Union[str, Callable[..., str]]):
         self.key = key if isinstance(key, str) else key()
-        self.client = googlemaps.Client(self.key)
+        self.client = Client(self.key)
         self.query = query
+        self.next_page = None
 
-    def places(self, fetch_additional: bool = False) -> list[Type[Place]]:
-        raw_response = self.client.places(self.query)
+    def places(self, fetch_details: bool = False, next_page: bool = False) -> list[Type[Place]]:
+        if not self.next_page and next_page:
+            return
+        if next_page:
+            raw_response = self.client.places(page_token=self.next_page)
+        else:
+            raw_response = self.client.places(self.query)
         self.check_status(raw_response['status'], raise_on_bad=True)
+        if raw_response['status'] == 'ZERO_RESULTS':
+            return
         results = raw_response['results']
+        self.next_page = raw_response.get('next_page_token')
         _places = self.parse_places(results)
-        if fetch_additional:
+        if fetch_details:
             self.update_details(_places)
         return _places
 
@@ -114,9 +126,47 @@ class MassSearch:
             'google_url': place_result_response.get('url'),
         }
         return details
+    
+    #def fetch_next_places(self, fetch_details: bool = False) -> Optional[list[Type[Place]]]:
+        #if not self.next_page:
+            #return
+        #self.query = self.next_page
+        #places = self.places(fetch_details, next_page=True)
+        #self.query = _query
+        #return places
 
     def filter(self, params: dict[Any]):
         pass
 
-    def handle_next_page(self):
-        pass
+
+def mass_search(query: str, key: str, pages_to_fetch: int = 3, fetch_details: bool = False) -> list[Type[Place]]:
+    search = Search(query=query, key=key)
+    places = []
+    places.extend(search.places(fetch_details))
+    for _ in range(pages_to_fetch-1):
+        places.extend(run(next_page, ApiError, search, pages_to_fetch, fetch_details))
+    return places
+    
+    
+def next_page(search, pages_to_fetch, fetch_details):
+    return search.places(fetch_details, next_page=True)
+    
+    
+def run(func, exception, *args, tries=5, delay=0.5):
+    for _ in range(tries+1):
+        try:
+            r = func(*args)
+            return r
+        except exception:
+            time.sleep(delay)
+            continue
+        
+    
+    
+    
+    
+    
+    
+    
+    
+    
