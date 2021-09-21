@@ -3,3 +3,5 @@
 docs
 ipysess.py
 places_api.py
+auth.json
+__pycache__/
